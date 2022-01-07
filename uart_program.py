@@ -21,7 +21,9 @@ def convert_pil_format(im1):
     # im1.show()
     return im1
 
-def convert_pil_to_array(im):
+import re
+
+def convert_pil_to_hexarray(im):
     display = []
     imageSizeW, imageSizeH = im.size
     imagePixels = im.getdata()
@@ -31,7 +33,12 @@ def convert_pil_to_array(im):
             if imagePixels[j*imageSizeW + i] != 0: #if im.getpixel((i, j)) != 0:
                 x_bytes |= (1 << i)
 
-        x_chars = x_bytes.to_bytes(xi, byteorder = 'little')
+        x_chars = x_bytes.to_bytes(x // 8 + 1, byteorder = 'little')
+        x_chars = x_chars.hex().upper()
+
+        # swap every nibble
+        x_chars = re.sub(r'(.)(.)', r'\2\1', x_chars)
+
         display.append(x_chars)
     return display
 
@@ -45,16 +52,12 @@ def realign_mcu(ser, xi, y):
 
 
 def upload_to_mcu(display_array, x, y):
-    for i, line in enumerate(display_array):
-        if i < y:
-            ser.write(line[:x])
-
-def upload_to_mcu(display_array, x, y):
-    buf = b''
+    buf = "#"
     for i, line in enumerate(display_array):
         if i < y:
             buf += line[:x]
-    ser.write(buf)
+            buf += "+"
+    ser.write(buf.encode())
     ser.flush()
 
 
@@ -69,9 +72,8 @@ if __name__ == '__main__':
     print(f"Starting {ser.port} at {ser.baudrate}")
     print("----")
 
-    xi = 30
-    x = xi * 8
-    y = (304-20)
+    x = 300
+    y = 512
     print(f"Image size: {x}x{y}")
 
     im = Image.open("image.png" if not len(sys.argv) >= 3 else sys.argv[2])
@@ -79,7 +81,7 @@ if __name__ == '__main__':
     if (not hasattr(im, 'is_animated')) or (not im.is_animated):
         # Static PNG or JPG
         im1 = convert_pil_format(im)
-        display = convert_pil_to_array(im1)
+        display = convert_pil_to_hexarray(im1)
         #realign_mcu(ser, xi, y)
         upload_to_mcu(display, x, y)
         print("Sent all")
@@ -93,7 +95,7 @@ if __name__ == '__main__':
             im.seek(frame)
             
             im1 = convert_pil_format(im)
-            array = convert_pil_to_array(im1)
+            array = convert_pil_to_hexarray(im1)
             frame_array.append(array)
 
         #realign_mcu(ser, xi, y)
