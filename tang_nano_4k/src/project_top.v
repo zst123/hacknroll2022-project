@@ -324,7 +324,7 @@ module project_top (
                 PAL_level <= PAL_LEVEL_LOW;
             end else if (PAL_ticks < ((1.65+4.7+5.6) * PAL_USEC_TICKS)) begin
                 PAL_level <= PAL_LEVEL_BLACK;
-            end else if (PAL_ticks < (64 * PAL_USEC_TICKS)) begin
+            end else if (PAL_ticks < (63 * PAL_USEC_TICKS)) begin
                 // Divider for screen X count because the function had timing issues
                 if (PAL_screen_X_ticks < PAL_LINE_TICKS_PER_PIXEL) begin
                     PAL_screen_X_ticks <= PAL_screen_X_ticks + 1;
@@ -367,6 +367,8 @@ module project_top (
                 else PAL_level <= PAL_LEVEL_BLACK;
                 */
 
+            end else begin
+                PAL_level <= PAL_LEVEL_BLACK;
             end
         end
     end
