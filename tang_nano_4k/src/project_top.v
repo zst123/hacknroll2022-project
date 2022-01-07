@@ -135,4 +135,23 @@ module project_top (
         end
     end
 
+    //-------- PWM generator --------//
+    // 159 MHz / 13 = 12.23 MHz
+    // 12.23 MHz * 5 = 61.15 MHz
+
+    parameter PWM_ticks = 8'd13 - 8'd1;
+    reg [7:0] PWM_counter = 8'd0;
+    reg [7:0] PWM_threshold = 9;
+    
+    always @(posedge CLK_159MHz) begin
+        if (PWM_counter < PWM_ticks) begin
+            PWM_counter <= PWM_counter + 8'd1;
+        end else begin
+            PWM_counter <= 8'd0;
+        end
+    end
+    
+    wire PWM_output = PWM_counter < PWM_threshold;
+    assign antenna = PWM_output;
+
 endmodule
