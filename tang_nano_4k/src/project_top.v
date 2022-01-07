@@ -171,5 +171,138 @@ module project_top (
     
     wire PWM_output = PWM_counter < PWM_threshold;
     assign antenna = PWM_output & PWM_activated;
+    
+    //-------- PAL State Machine --------//
+
+    // keep track of time
+    parameter PAL_USEC_TICKS = 159; // 160MHz clock
+    reg [15:0] PAL_ticks  = 16'd0;
+
+    // voltage level
+    parameter PAL_LEVEL_LOW  = 0;
+    parameter PAL_LEVEL_BLACK  = 1;
+    parameter PAL_LEVEL_WHITE  = 2;
+    reg [4:0] PAL_level = PAL_LEVEL_LOW;
+
+    // line number
+    reg [10:0] PAL_line  = 10'd1; // ranges from 1 to 625
+
+    // line states
+    wire PAL_sync_long_long = (PAL_line == 1 || PAL_line == 2 ||
+                               PAL_line == 314 || PAL_line == 315);
+    wire PAL_sync_short_short = (PAL_line == 4 || PAL_line == 5 ||
+                                 PAL_line == 311 || PAL_line == 312 ||
+                                 PAL_line == 316 || PAL_line == 317 ||
+                                 PAL_line == 623 || PAL_line == 624 || PAL_line == 625);
+    wire PAL_sync_long_short = (PAL_line == 3);
+    wire PAL_sync_short_long = (PAL_line == 313);
+
+    // process
+    always @(posedge CLK_159MHz) begin
+        // ticks
+        if (PAL_ticks < (64*PAL_USEC_TICKS)) begin
+            PAL_ticks <= PAL_ticks + 1;
+        end else begin
+            PAL_line <= PAL_line + 1;
+            PAL_ticks <= 0;
+        end
+        
+        // level to pwm
+        case (PAL_level)
+            PAL_LEVEL_LOW: PWM_threshold <= 7;
+            PAL_LEVEL_BLACK: PWM_threshold <= 2;
+            PAL_LEVEL_WHITE: PWM_threshold <= 0;
+        endcase
+        
+        // state machine
+        if (625 < PAL_line) begin
+            PAL_line <= 0;
+            PAL_ticks <= 0;
+        end else if (PAL_sync_long_long) begin
+            // Long/Long (27.3us low + 4.7us high / 27.3us low + 4.7us high)
+            if (PAL_ticks < (27.3 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_LOW;
+            end else if (PAL_ticks < (32 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_BLACK;
+            end else if (PAL_ticks < (59.3 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_LOW;
+            end else if (PAL_ticks < (64 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_BLACK;
+            end else begin
+                PAL_line <= PAL_line + 1;
+                PAL_ticks <= 0;
+            end
+        end else if (PAL_sync_long_short) begin
+            // Long/Short (27.3us low + 4.7us high / 2.35us low + 29.65us high)
+            if (PAL_ticks < (27.3 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_LOW;
+            end else if (PAL_ticks < (32 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_BLACK;
+            end else if (PAL_ticks < (34.35 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_LOW;
+            end else if (PAL_ticks < (64 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_BLACK;
+            end else begin
+                PAL_line <= PAL_line + 1;
+                PAL_ticks <= 0;
+            end
+        end else if (PAL_sync_short_long) begin
+            // Short/Long (2.35us low + 29.65us high / 27.3us low + 4.7us high)
+            if (PAL_ticks < (2.35 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_LOW;
+            end else if (PAL_ticks < (32 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_BLACK;
+            end else if (PAL_ticks < (59.3 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_LOW;
+            end else if (PAL_ticks < (64 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_BLACK;
+            end else begin
+                PAL_line <= PAL_line + 1;
+                PAL_ticks <= 0;
+            end
+        end else if (PAL_sync_short_short) begin
+            // Short/Long (2.35us low + 29.65us high / 27.3us low + 4.7us high)
+            if (PAL_ticks < (2.35 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_LOW;
+            end else if (PAL_ticks < (32 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_BLACK;
+            end else if (PAL_ticks < (34.35 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_LOW;
+            end else if (PAL_ticks < (64 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_BLACK;
+            end else begin
+                PAL_line <= PAL_line + 1;
+                PAL_ticks <= 0;
+            end
+        end else begin
+            // front porch 1.65ms high 
+            // horizontal sync 4.7ms low 
+            // back porch 5.7ms high 
+            if (PAL_ticks < (1.65 * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_BLACK;
+                PAL_screen_X_ticks <= 0;
+                PAL_screen_X_count <= 0;
+            end else if (PAL_ticks < ((1.65+4.7) * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_LOW;
+            end else if (PAL_ticks < ((1.65+4.7+5.6) * PAL_USEC_TICKS)) begin
+                PAL_level <= PAL_LEVEL_BLACK;
+            end else if (PAL_ticks < (64 * PAL_USEC_TICKS)) begin
+                // Test uart_line_index
+                if (PAL_ticks < ((32+uart_line_index) * PAL_USEC_TICKS))
+                    PAL_level <= PAL_LEVEL_WHITE;
+                else PAL_level <= PAL_LEVEL_BLACK;
+
+                // Test screen Y lines
+                /*
+                if (PAL_ticks < ((14*PAL_USEC_TICKS + PAL_screen_Y(PAL_line)*PAL_USEC_TICKS/12)))
+                    PAL_level <= PAL_LEVEL_WHITE;
+                else PAL_level <= PAL_LEVEL_BLACK;
+                */
+
+            end
+        end
+    end
+
+
 
 endmodule
