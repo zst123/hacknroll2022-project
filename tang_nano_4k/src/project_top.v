@@ -1,5 +1,7 @@
 module project_top (
     input SYS_CLK,
+    input KEY1,
+    input KEY2,
     input uart_rxd,
     output antenna,
     output reg led
