@@ -135,6 +135,24 @@ module project_top (
         end
     end
 
+    //-------- Push button handler --------//
+    
+    reg PWM_activated = 0;
+
+    always @(posedge CLK_27MHz) begin
+        if (KEY1 == 0 && KEY2 == 0) begin
+            // Both button pressed: do nothing
+        end else if (KEY1 == 0) begin
+            // Activate
+            PWM_activated <= 1;
+        end else if (KEY2 == 0) begin
+            // Deactivate
+            PWM_activated <= 0;
+        end
+    end
+
+
+
     //-------- PWM generator --------//
     // 159 MHz / 13 = 12.23 MHz
     // 12.23 MHz * 5 = 61.15 MHz
@@ -152,6 +170,6 @@ module project_top (
     end
     
     wire PWM_output = PWM_counter < PWM_threshold;
-    assign antenna = PWM_output;
+    assign antenna = PWM_output & PWM_activated;
 
 endmodule
