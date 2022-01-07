@@ -198,6 +198,40 @@ module project_top (
                                  PAL_line == 623 || PAL_line == 624 || PAL_line == 625);
     wire PAL_sync_long_short = (PAL_line == 3);
     wire PAL_sync_short_long = (PAL_line == 313);
+    wire PAL_field_one = (6 <= PAL_line && PAL_line <= 310);
+    wire PAL_field_two = (318 <= PAL_line && PAL_line <= 622);
+    
+    // Functions to calculate screen coordinates
+    parameter integer PAL_LINE_OFFSET_TICKS = (1.65+4.7+5.6) * PAL_USEC_TICKS;
+    parameter PAL_LINE_FULLRANGE_TICKS = (64-(1.65+4.7+5.6)) * PAL_USEC_TICKS;
+    parameter integer PAL_LINE_TICKS_PER_PIXEL = PAL_LINE_FULLRANGE_TICKS / UART_PIXELS;
+    
+    reg [15:0] PAL_screen_X_ticks = 16'd0;
+    reg [15:0] PAL_screen_X_count = 16'd0;
+
+    // Slow function; deprecated
+    function [10:0] PAL_screen_X;
+        input [31:0] ticks;
+        begin
+            PAL_screen_X = ((ticks-PAL_LINE_OFFSET_TICKS) / PAL_LINE_TICKS_PER_PIXEL);
+        end
+    endfunction
+
+    parameter integer PAL_BLANKING_LINES = 48 + 20; // arbitrary value - shift down due to overscan
+    parameter integer PAL_TOTAL_LINES = 512; // according to uart buffer size of 9 bits
+
+    function [10:0] PAL_screen_Y;
+        input [10:0] line;
+        begin
+            if (6 <= line && line <= 310) begin
+                PAL_screen_Y = (line-6)*2 | 1; // Field One (Odd)
+            end else if (318 <= line && line <= 622) begin
+                PAL_screen_Y = (line-318)*2 | 0; // Field Two (Even)
+            end else begin
+                PAL_screen_Y = 0;
+            end
+        end
+    endfunction
 
     // process
     always @(posedge CLK_159MHz) begin
@@ -282,6 +316,8 @@ module project_top (
             // back porch 5.7ms high 
             if (PAL_ticks < (1.65 * PAL_USEC_TICKS)) begin
                 PAL_level <= PAL_LEVEL_BLACK;
+                // Reset parameters for BRAM
+                bram_addr_rd <= (PAL_screen_Y(PAL_line) > PAL_BLANKING_LINES) ? PAL_screen_Y(PAL_line)-PAL_BLANKING_LINES : 0; 
                 PAL_screen_X_ticks <= 0;
                 PAL_screen_X_count <= 0;
             end else if (PAL_ticks < ((1.65+4.7) * PAL_USEC_TICKS)) begin
@@ -289,10 +325,40 @@ module project_top (
             end else if (PAL_ticks < ((1.65+4.7+5.6) * PAL_USEC_TICKS)) begin
                 PAL_level <= PAL_LEVEL_BLACK;
             end else if (PAL_ticks < (64 * PAL_USEC_TICKS)) begin
+                // Divider for screen X count because the function had timing issues
+                if (PAL_screen_X_ticks < PAL_LINE_TICKS_PER_PIXEL) begin
+                    PAL_screen_X_ticks <= PAL_screen_X_ticks + 1;
+                end else begin
+                    PAL_screen_X_ticks <= 0;
+                    PAL_screen_X_count <= PAL_screen_X_count + 1;
+                end
+
+                // Select the line from the BRAM
+                if (PAL_screen_Y(PAL_line) < PAL_BLANKING_LINES) begin
+                    PAL_level <= PAL_LEVEL_BLACK;
+                end else if (PAL_screen_Y(PAL_line) >= (PAL_TOTAL_LINES + PAL_BLANKING_LINES)) begin
+                    PAL_level <= PAL_LEVEL_BLACK;
+                end else begin
+                    if (bram_data_rd[PAL_screen_X_count]) begin
+                        PAL_level <= PAL_LEVEL_WHITE;
+                    end else begin
+                        PAL_level <= PAL_LEVEL_BLACK;
+                    end
+                end
+
+                // Test screen X pixels
+                /*
+                if (PAL_screen_Y(PAL_line) < 2*PAL_screen_X_count)
+                    PAL_level <= PAL_LEVEL_BLACK;
+                else PAL_level <= PAL_LEVEL_WHITE;
+                */
+
                 // Test uart_line_index
+                /*
                 if (PAL_ticks < ((32+uart_line_index) * PAL_USEC_TICKS))
                     PAL_level <= PAL_LEVEL_WHITE;
                 else PAL_level <= PAL_LEVEL_BLACK;
+                */
 
                 // Test screen Y lines
                 /*
