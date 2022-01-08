@@ -64,7 +64,7 @@ def upload_to_mcu(display_array, x, y):
 if __name__ == '__main__':
     ser = serial.Serial(
         port=sys.argv[1],
-        baudrate=2200000,
+        baudrate=115200,
         bytesize=serial.EIGHTBITS,
         parity=serial.PARITY_NONE,
         stopbits=serial.STOPBITS_ONE)

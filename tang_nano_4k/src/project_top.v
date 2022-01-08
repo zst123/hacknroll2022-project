@@ -56,8 +56,8 @@ module project_top (
 
     uart_rx #(
         .CLOCK_RATE(27_000_000),
-        .BAUD_RATE(2200000)
-        //.BAUD_RATE(115200)
+        //.BAUD_RATE(1000000)
+        .BAUD_RATE(115200)
     ) uart_m_instance (
         .i_CLK(CLK_27MHz),
         .i_RX(uart_rxd),
@@ -139,7 +139,7 @@ module project_top (
 
     //-------- Push button handler --------//
     
-    reg PWM_activated = 0;
+    reg PWM_activated = 1;
 
     always @(posedge CLK_27MHz) begin
         if (KEY1 == 0 && KEY2 == 0) begin
@@ -208,6 +208,8 @@ module project_top (
     
     reg [15:0] PAL_screen_X_ticks = 16'd0;
     reg [15:0] PAL_screen_X_count = 16'd0;
+    reg [400-1:0] PAL_line_buffer;
+
 
     // Slow function; deprecated
     function [10:0] PAL_screen_X;
@@ -324,6 +326,7 @@ module project_top (
                 PAL_level <= PAL_LEVEL_LOW;
             end else if (PAL_ticks < ((1.65+4.7+5.6) * PAL_USEC_TICKS)) begin
                 PAL_level <= PAL_LEVEL_BLACK;
+                PAL_line_buffer <= bram_data_rd;
             end else if (PAL_ticks < (63 * PAL_USEC_TICKS)) begin
                 // Divider for screen X count because the function had timing issues
                 if (PAL_screen_X_ticks < PAL_LINE_TICKS_PER_PIXEL) begin
@@ -331,6 +334,7 @@ module project_top (
                 end else begin
                     PAL_screen_X_ticks <= 0;
                     PAL_screen_X_count <= PAL_screen_X_count + 1;
+                    PAL_line_buffer <= PAL_line_buffer >> 1;
                 end
 
                 // Select the line from the BRAM
@@ -339,7 +343,7 @@ module project_top (
                 end else if (PAL_screen_Y(PAL_line) >= (PAL_TOTAL_LINES + PAL_BLANKING_LINES)) begin
                     PAL_level <= PAL_LEVEL_BLACK;
                 end else begin
-                    if (bram_data_rd[PAL_screen_X_count]) begin
+                    if (PAL_line_buffer[0]) begin
                         PAL_level <= PAL_LEVEL_WHITE;
                     end else begin
                         PAL_level <= PAL_LEVEL_BLACK;
